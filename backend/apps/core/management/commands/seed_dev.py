@@ -40,9 +40,13 @@ class Command(BaseCommand):
                 f"Mock Ranger login -> phone: {MOCK_RANGER_PHONE}, OTP: 0000"
             )
         )
+        self.stdout.write(
+            self.style.SUCCESS("Mock Admin login  -> phone: 8888888888, OTP: 0000")
+        )
 
     # ------------------------------------------------------------------ admin
     def _seed_admin(self) -> None:
+        # Django superuser for the /admin site.
         User.objects.get_or_create(
             username="admin",
             defaults={
@@ -51,6 +55,16 @@ class Command(BaseCommand):
                 "role": UserRole.ADMIN,
                 "is_staff": True,
                 "is_superuser": True,
+                "is_phone_verified": True,
+            },
+        )
+        # Demo admin for phone+OTP login on the admin console.
+        User.objects.get_or_create(
+            username="admin_demo",
+            defaults={
+                "full_name": "Spoto Admin",
+                "phone": "8888888888",
+                "role": UserRole.ADMIN,
                 "is_phone_verified": True,
             },
         )

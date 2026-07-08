@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from apps.core.models import OtpSession, RangerProfile, User
+from api.security import create_access_token
 
 router = APIRouter()
 
@@ -38,6 +39,7 @@ class SessionUser(BaseModel):
 class VerifyOtpResponse(BaseModel):
     status: str
     user: SessionUser | None = None
+    token: str | None = None
 
 
 @router.post("/otp/request")
@@ -75,6 +77,7 @@ def verify_otp(payload: VerifyOtpPayload) -> VerifyOtpResponse:
 
     user = User.objects.filter(phone=payload.phone).first()
     session_user: SessionUser | None = None
+    token: str | None = None
     if user is not None:
         if not user.is_phone_verified:
             user.is_phone_verified = True
@@ -91,5 +94,6 @@ def verify_otp(payload: VerifyOtpPayload) -> VerifyOtpResponse:
             role=user.role,
             rangerId=str(ranger_id) if ranger_id else None,
         )
+        token = create_access_token(user)
 
-    return VerifyOtpResponse(status="verified", user=session_user)
+    return VerifyOtpResponse(status="verified", user=session_user, token=token)
