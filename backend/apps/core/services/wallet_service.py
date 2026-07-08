@@ -19,15 +19,17 @@ from apps.core.models import (
 from apps.core.services import spoto_listing_service
 from apps.core.services.property_service import TransitionError
 
-DEFAULT_REWARD = 100
+# Flat reward paid to a ranger when their verified listing goes live.
+REWARD_AMOUNT = 100
 
 
 @transaction.atomic
-def publish_and_reward(prop: Property, admin: User) -> Property:
-    """VERIFIED -> LISTED (live on Spoto) -> REWARD_CREDITED, atomically.
+def send_reward(prop: Property, admin: User) -> Property:
+    """Reward step: VERIFIED -> LISTED (live on Spoto) -> REWARD_CREDITED, atomically.
 
-    Idempotent: a property already at REWARD_CREDITED is returned unchanged so
-    the reward can never be paid twice.
+    Only allowed once a submission is VERIFIED, so the reward can never be sent
+    before verification. Idempotent: a property already at REWARD_CREDITED is
+    returned unchanged so the reward can never be paid twice.
     """
     # Re-read under a lock to avoid double-credit under concurrency.
     prop = Property.objects.select_for_update().get(pk=prop.pk)
@@ -36,10 +38,10 @@ def publish_and_reward(prop: Property, admin: User) -> Property:
         return prop
     if prop.status not in (PropertyStatus.VERIFIED, PropertyStatus.LISTED):
         raise TransitionError(
-            f"Cannot publish from '{prop.status}'. Verify the submission first."
+            f"Cannot send reward from '{prop.status}'. Verify the submission first."
         )
 
-    reward = prop.reward_amount or DEFAULT_REWARD
+    reward = REWARD_AMOUNT
 
     # 1) Publish to Spoto's marketplace (stubbed integration seam).
     spoto_listing_service.publish_listing(prop)
@@ -82,12 +84,47 @@ def publish_and_reward(prop: Property, admin: User) -> Property:
     )
     AuditLog.objects.create(
         actor=admin,
-        action="property.publish_and_reward",
+        action="property.send_reward",
         entity_type="property",
         entity_id=prop.id,
         metadata={"reward": reward},
     )
     return prop
+
+
+@transaction.atomic
+def recompute_from_ledger(wallet: Wallet) -> None:
+    """Rebuild wallet totals and each row's balance_after from the (now-edited)
+    transaction ledger. Used after a demo reset removes practice transactions."""
+    wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
+    balance = lifetime = pending = withdrawn = 0
+    for tx in wallet.transactions.order_by("created_at"):
+        if tx.transaction_type == WalletTransactionType.CREDIT:
+            balance += tx.amount
+            lifetime += tx.amount
+        elif tx.transaction_type == WalletTransactionType.DEBIT:
+            balance -= tx.amount
+            withdrawn += tx.amount
+        elif tx.transaction_type == WalletTransactionType.HOLD:
+            pending += tx.amount
+        elif tx.transaction_type == WalletTransactionType.RELEASE:
+            pending -= tx.amount
+        if tx.balance_after != balance:
+            tx.balance_after = balance
+            tx.save(update_fields=["balance_after", "updated_at"])
+    wallet.current_balance = balance
+    wallet.lifetime_earnings = lifetime
+    wallet.pending_rewards = pending
+    wallet.withdrawn_amount = withdrawn
+    wallet.save(
+        update_fields=[
+            "current_balance",
+            "lifetime_earnings",
+            "pending_rewards",
+            "withdrawn_amount",
+            "updated_at",
+        ]
+    )
 
 
 def _transition(prop: Property, to_status: str, admin: User, reason: str) -> None:

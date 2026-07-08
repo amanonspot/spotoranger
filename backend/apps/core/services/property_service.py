@@ -66,7 +66,6 @@ def change_status(
     admin: User,
     reason: str = "",
     suggestion: str = "",
-    reward_amount: int | None = None,
 ) -> Property:
     from_status = prop.status
     if to_status == from_status:
@@ -77,11 +76,7 @@ def change_status(
         raise TransitionError(f"Cannot move from '{from_status}' to '{to_status}'.")
 
     prop.status = to_status
-    update_fields = ["status", "updated_at"]
-    if to_status == PropertyStatus.VERIFIED and reward_amount is not None:
-        prop.reward_amount = reward_amount
-        update_fields.append("reward_amount")
-    prop.save(update_fields=update_fields)
+    prop.save(update_fields=["status", "updated_at"])
 
     PropertyStatusHistory.objects.create(
         property=prop,

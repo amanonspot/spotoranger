@@ -112,32 +112,52 @@ class StatusChangeTests(TestCase):
             change_status(prop, PropertyStatus.VERIFIED, self.admin)
 
 
-class PublishRewardTests(TestCase):
+class RewardTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create(
             username="admin_p", full_name="Admin", phone="8888888888", role=UserRole.ADMIN
         )
         self.ranger = _make_ranger()
 
-    def test_publish_credits_wallet_once_and_is_idempotent(self):
-        prop = _make_property(self.ranger, status=PropertyStatus.VERIFIED, reward=100)
+    def test_reward_before_verify_is_rejected(self):
+        prop = _make_property(self.ranger, status=PropertyStatus.SUBMITTED)
+        with self.assertRaises(TransitionError):
+            wallet_service.send_reward(prop, self.admin)
+
+    def test_reward_credits_flat_100_once_and_is_idempotent(self):
+        prop = _make_property(self.ranger, status=PropertyStatus.VERIFIED, reward=0)
         wallet = self.ranger.wallet
         start = wallet.current_balance
 
-        wallet_service.publish_and_reward(prop, self.admin)
+        wallet_service.send_reward(prop, self.admin)
         prop.refresh_from_db()
         wallet.refresh_from_db()
 
         self.assertEqual(prop.status, PropertyStatus.REWARD_CREDITED)
-        self.assertEqual(wallet.current_balance, start + 100)
+        self.assertEqual(wallet.current_balance, start + 100)  # flat ₹100
         credits = wallet.transactions.filter(transaction_type=WalletTransactionType.CREDIT)
         self.assertEqual(credits.count(), 1)
 
         # Second call must not double-credit.
-        wallet_service.publish_and_reward(prop, self.admin)
+        wallet_service.send_reward(prop, self.admin)
         wallet.refresh_from_db()
         self.assertEqual(wallet.current_balance, start + 100)
         self.assertEqual(
             wallet.transactions.filter(transaction_type=WalletTransactionType.CREDIT).count(),
             1,
         )
+
+    def test_recompute_from_ledger_restores_balance_after_removal(self):
+        prop = _make_property(self.ranger, status=PropertyStatus.VERIFIED, reward=0)
+        wallet = self.ranger.wallet
+        start = wallet.current_balance
+
+        wallet_service.send_reward(prop, self.admin)
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.current_balance, start + 100)
+
+        # Simulate a demo reset: drop the reward tx, then recompute.
+        wallet.transactions.filter(property=prop).delete()
+        wallet_service.recompute_from_ledger(wallet)
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.current_balance, start)

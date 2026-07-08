@@ -20,6 +20,9 @@ from apps.core.models import (
 )
 
 MOCK_RANGER_PHONE = "9999999999"
+# Practice submission the admin can verify + reward to learn the flow. Identified
+# by this exact name (no schema flag), and reset via POST /admin/demo/reset.
+DEMO_LISTING_NAME = "Demo Listing — Practice"
 
 
 class Command(BaseCommand):
@@ -33,6 +36,7 @@ class Command(BaseCommand):
         properties = self._seed_properties(ranger)
         self._seed_wallet(ranger, properties)
         self._seed_notifications(ranger.user, properties)
+        self._seed_demo_listing(ranger)
 
         self.stdout.write(self.style.SUCCESS("Seed data created."))
         self.stdout.write(
@@ -290,8 +294,35 @@ class Command(BaseCommand):
         ]
         for title, body, prop in items:
             action_url = f"/leads/{prop.id}" if prop else ""
-            Notification.objects.get_or_create(
-                user=user,
-                title=title,
-                defaults={"body": body, "action_url": action_url},
+            # Guard with exists() rather than get_or_create: reward flows may have
+            # already created same-title notifications, which would break get().
+            if not Notification.objects.filter(user=user, title=title).exists():
+                Notification.objects.create(
+                    user=user, title=title, body=body, action_url=action_url
+                )
+
+    # ----------------------------------------------------------------- demo
+    def _seed_demo_listing(self, ranger: RangerProfile) -> None:
+        prop, created = Property.objects.get_or_create(
+            ranger=ranger,
+            building_name=DEMO_LISTING_NAME,
+            defaults={
+                "area": "Indiranagar",
+                "owner_name": "Demo Owner",
+                "owner_phone": "7000000000",
+                "bhk": BhkType.TWO_BHK,
+                "monthly_rent": 32000,
+                "deposit": 150000,
+                "status": PropertyStatus.SUBMITTED,
+                "reward_amount": 0,
+                "notes": "DEMO — practice verifying and rewarding this listing.",
+            },
+        )
+        if created:
+            PropertyStatusHistory.objects.create(
+                property=prop,
+                from_status="",
+                to_status=PropertyStatus.SUBMITTED,
+                reason="Demo listing seeded for practice",
+                changed_by=None,
             )

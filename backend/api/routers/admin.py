@@ -11,15 +11,20 @@ from apps.core.models import (
     InvitationStatus,
     Property,
     PropertyStatus,
+    PropertyStatusHistory,
     RangerProfile,
     User,
     Wallet,
+    WalletTransaction,
 )
 from apps.core.services import wallet_service
 from apps.core.services.property_service import TransitionError, change_status
 from api.security import require_admin
 
 router = APIRouter()
+
+# The practice submission (see seed_dev.DEMO_LISTING_NAME) admins can reset.
+DEMO_LISTING_NAME = "Demo Listing — Practice"
 
 # Statuses an admin considers "still needs work".
 PENDING_STATUSES = [
@@ -137,7 +142,6 @@ class StatusPayload(BaseModel):
     status: PropertyStatus
     reason: str = ""
     suggestion: str = ""
-    reward_amount: int | None = Field(default=None, ge=0)
 
 
 @router.post("/submissions/{property_id}/status")
@@ -154,23 +158,67 @@ def change_submission_status(
             admin,
             reason=payload.reason,
             suggestion=payload.suggestion,
-            reward_amount=payload.reward_amount,
         )
     except TransitionError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return get_submission(property_id, admin)
 
 
-@router.post("/submissions/{property_id}/publish")
-def publish_submission(
+@router.post("/submissions/{property_id}/reward")
+def send_submission_reward(
     property_id: str, admin: User = Depends(require_admin)
 ) -> dict[str, object]:
+    """Reward step — enabled only after a submission is verified. Credits a flat
+    ₹100 to the ranger's wallet and marks the listing live + reward_credited."""
     item = _get_property_or_404(property_id)
     try:
-        wallet_service.publish_and_reward(item, admin)
+        wallet_service.send_reward(item, admin)
     except TransitionError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return get_submission(property_id, admin)
+
+
+@router.post("/demo/reset")
+def reset_demo(admin: User = Depends(require_admin)) -> dict[str, object]:
+    """Reset the practice demo listing to `submitted` and undo its reward so the
+    admin can run the verify -> reward flow again. Scoped to the demo only."""
+    demo = (
+        Property.objects.select_related("ranger")
+        .filter(building_name=DEMO_LISTING_NAME)
+        .first()
+    )
+    if demo is None:
+        raise HTTPException(status_code=404, detail="Demo listing not found")
+
+    # Remove any practice reward transactions, then reset the property.
+    WalletTransaction.objects.filter(property=demo).delete()
+    demo.status = PropertyStatus.SUBMITTED
+    demo.reward_amount = 0
+    demo.save(update_fields=["status", "reward_amount", "updated_at"])
+
+    # Keep only the initial history row; drop practice transitions.
+    history = list(demo.status_history.order_by("created_at"))
+    for entry in history[1:]:
+        entry.delete()
+    if not history:
+        PropertyStatusHistory.objects.create(
+            property=demo, from_status="", to_status=PropertyStatus.SUBMITTED, reason="Demo reset"
+        )
+
+    wallet = Wallet.objects.filter(ranger=demo.ranger).first()
+    if wallet is not None:
+        wallet_service.recompute_from_ledger(wallet)
+
+    return {"status": "reset", "id": str(demo.id), "buildingName": demo.building_name}
+
+
+@router.get("/demo")
+def get_demo(admin: User = Depends(require_admin)) -> dict[str, object]:
+    """Return the demo listing id so the admin UI can link straight to it."""
+    demo = Property.objects.filter(building_name=DEMO_LISTING_NAME).first()
+    if demo is None:
+        raise HTTPException(status_code=404, detail="Demo listing not found")
+    return {"id": str(demo.id), "buildingName": demo.building_name, "status": demo.status}
 
 
 # ------------------------------------------------------------------- rangers
