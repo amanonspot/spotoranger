@@ -1,0 +1,23 @@
+.env
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+db.sqlite3
+
+# Node / Next
+node_modules/
+.next/
+out/
+npm-debug.log*
+next-env.d.ts
+*.tsbuildinfo
+
+# Tooling
+.coverage
+coverage/
+.claude/
+
