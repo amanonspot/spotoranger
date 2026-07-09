@@ -21,3 +21,6 @@ next-env.d.ts
 coverage/
 .claude/
 
+
+# Local-only platform docs (keep out of git)
+SPOTO_PLATFORM_DOCS.md
