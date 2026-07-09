@@ -1,7 +1,13 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from apps.core.models import BhkType, Property, PropertyStatus
+from apps.core.models import (
+    BhkType,
+    Property,
+    PropertyStatus,
+    PropertyStatusHistory,
+    RangerProfile,
+)
 
 router = APIRouter()
 
@@ -33,6 +39,38 @@ def _serialize_summary(item: Property) -> dict[str, object]:
         "reward": item.reward_amount,
         "submittedAt": item.created_at.isoformat(),
     }
+
+
+@router.post("")
+def create_property(payload: PropertyCreatePayload) -> dict[str, object]:
+    ranger = RangerProfile.objects.filter(id=payload.ranger_id).first()
+    if ranger is None:
+        raise HTTPException(status_code=404, detail="Ranger not found")
+
+    item = Property.objects.create(
+        ranger=ranger,
+        building_name=payload.building_name,
+        area=payload.area,
+        owner_name=payload.owner_name,
+        owner_phone=payload.owner_phone,
+        bhk=payload.bhk,
+        monthly_rent=payload.monthly_rent,
+        deposit=payload.deposit,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+        maps_place_id=payload.maps_place_id,
+        flat_number=payload.flat_number,
+        floor=payload.floor,
+        notes=payload.notes,
+        status=PropertyStatus.SUBMITTED,
+    )
+    PropertyStatusHistory.objects.create(
+        property=item,
+        from_status="",
+        to_status=PropertyStatus.SUBMITTED,
+        reason="Lead submitted by ranger",
+    )
+    return _serialize_summary(item)
 
 
 @router.get("")

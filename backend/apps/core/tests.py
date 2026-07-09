@@ -20,6 +20,49 @@ class PropertyStatusTests(TestCase):
         self.assertEqual(PropertyStatus.REWARD_CREDITED, "reward_credited")
 
 
+class CreatePropertyTests(TestCase):
+    def test_create_persists_and_starts_submitted(self):
+        from api.routers.properties import PropertyCreatePayload, create_property
+
+        ranger = _make_ranger()
+        result = create_property(
+            PropertyCreatePayload(
+                ranger_id=str(ranger.id),
+                building_name="New Tower",
+                area="HSR Layout",
+                owner_name="Owner X",
+                owner_phone="7776665555",
+                bhk=BhkType.TWO_BHK,
+                monthly_rent=25000,
+                deposit=80000,
+            )
+        )
+        self.assertEqual(result["status"], PropertyStatus.SUBMITTED)
+        prop = Property.objects.get(id=result["id"])
+        self.assertEqual(prop.ranger_id, ranger.id)
+        self.assertEqual(prop.status_history.count(), 1)
+
+    def test_create_unknown_ranger_404(self):
+        from fastapi import HTTPException
+
+        from api.routers.properties import PropertyCreatePayload, create_property
+
+        with self.assertRaises(HTTPException) as ctx:
+            create_property(
+                PropertyCreatePayload(
+                    ranger_id="00000000-0000-0000-0000-000000000000",
+                    building_name="Xx",
+                    area="Yy",
+                    owner_name="Zz",
+                    owner_phone="1112223333",
+                    bhk=BhkType.ONE_BHK,
+                    monthly_rent=1000,
+                    deposit=0,
+                )
+            )
+        self.assertEqual(ctx.exception.status_code, 404)
+
+
 def _make_ranger(phone="9990001111", name="Test Ranger"):
     user = User.objects.create(
         username=f"ranger_{phone}", full_name=name, phone=phone, role=UserRole.RANGER
