@@ -7,7 +7,14 @@ import { ArrowDownLeft, ArrowUpRight, Clock } from "lucide-react";
 import { AppShell } from "@/components/app-shell/app-shell";
 import { SpotoButton } from "@/design-system/components/button";
 import { SpotoCard } from "@/design-system/components/card";
-import { getWallet, type WalletSummary } from "@/lib/api/ranger";
+import { ApiError } from "@/lib/api/client";
+import {
+  getRangerProfile,
+  getWallet,
+  requestWithdrawal,
+  type RangerProfile,
+  type WalletSummary,
+} from "@/lib/api/ranger";
 import { useSession } from "@/lib/auth/session";
 import { formatDate, formatInr } from "@/lib/format";
 
@@ -21,24 +28,57 @@ function WalletContent() {
   const { session } = useSession();
   const rangerId = session?.rangerId ?? null;
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
+  const [profile, setProfile] = useState<RangerProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [withdrawing, setWithdrawing] = useState(false);
 
   useEffect(() => {
     if (!rangerId) {
       setLoading(false);
       return;
     }
-    getWallet(rangerId)
-      .then(setWallet)
-      .catch(() => setWallet(null))
+    Promise.all([getWallet(rangerId), getRangerProfile(rangerId)])
+      .then(([w, p]) => {
+        setWallet(w);
+        setProfile(p);
+      })
+      .catch(() => {
+        setWallet(null);
+        setProfile(null);
+      })
       .finally(() => setLoading(false));
   }, [rangerId]);
+
+  async function handleWithdraw() {
+    if (!rangerId || !wallet) return;
+    if (!profile?.upiId) {
+      toast.error("Add a UPI ID in Profile before withdrawing");
+      return;
+    }
+    setWithdrawing(true);
+    try {
+      const updated = await requestWithdrawal(rangerId);
+      setWallet(updated);
+      toast.success(
+        updated.withdrawal
+          ? `Withdrawal of ${formatInr(updated.withdrawal.amount)} requested`
+          : "Withdrawal requested",
+      );
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.detail : "Withdrawal failed");
+    } finally {
+      setWithdrawing(false);
+    }
+  }
 
   const stats = [
     { label: "Lifetime", value: wallet?.lifetimeEarnings ?? 0 },
     { label: "Pending", value: wallet?.pendingRewards ?? 0 },
     { label: "Withdrawn", value: wallet?.withdrawnAmount ?? 0 },
   ];
+
+  const upiLabel = profile?.upiId || "Add UPI in Profile";
+  const canWithdraw = Boolean(wallet && wallet.currentBalance >= 100 && profile?.upiId);
 
   return (
     <>
@@ -66,14 +106,17 @@ function WalletContent() {
         <SpotoCard className="flex flex-col justify-center gap-3">
           <p className="text-sm text-spoto-muted">
             Withdraw to{" "}
-            <span className="font-heading font-semibold text-spoto-ink">aman@upi</span>
+            <span className="font-heading font-semibold text-spoto-ink">{upiLabel}</span>
           </p>
+          <p className="text-xs text-spoto-muted">Minimum withdrawal ₹100</p>
           <SpotoButton
             variant="cta"
-            onClick={() => toast.success("Withdrawal requested (demo)")}
-            disabled={!wallet || wallet.currentBalance <= 0}
+            onClick={handleWithdraw}
+            disabled={!canWithdraw || withdrawing}
           >
-            Withdraw {formatInr(wallet?.currentBalance ?? 0)}
+            {withdrawing
+              ? "Requesting…"
+              : `Withdraw ${formatInr(wallet?.currentBalance ?? 0)}`}
           </SpotoButton>
         </SpotoCard>
       </div>

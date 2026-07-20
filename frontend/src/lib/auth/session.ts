@@ -2,11 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-/**
- * Client-side mock session. This is development convenience only — NOT production
- * auth. It persists the profile returned by /auth/otp/verify in localStorage so
- * the ranger screens have a rangerId/userId to query with.
- */
 export type SessionUser = {
   id: string;
   fullName: string;
@@ -15,17 +10,21 @@ export type SessionUser = {
   rangerId: string | null;
 };
 
-const STORAGE_KEY = "spoto-ranger-session";
+const SESSION_KEY = "spoto-ranger-session";
+const TOKEN_KEY = "spoto-ranger-token";
 
-export function setSession(user: SessionUser): void {
+export function setSession(user: SessionUser, token?: string | null): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+  window.localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+  if (token) {
+    window.localStorage.setItem(TOKEN_KEY, token);
+  }
   window.dispatchEvent(new Event("spoto-session-change"));
 }
 
 export function getSession(): SessionUser | null {
   if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(STORAGE_KEY);
+  const raw = window.localStorage.getItem(SESSION_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as SessionUser;
@@ -34,9 +33,15 @@ export function getSession(): SessionUser | null {
   }
 }
 
+export function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(TOKEN_KEY);
+}
+
 export function clearSession(): void {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(STORAGE_KEY);
+  window.localStorage.removeItem(SESSION_KEY);
+  window.localStorage.removeItem(TOKEN_KEY);
   window.dispatchEvent(new Event("spoto-session-change"));
 }
 

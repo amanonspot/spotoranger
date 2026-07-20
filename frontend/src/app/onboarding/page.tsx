@@ -8,17 +8,19 @@ import { ArrowRight } from "lucide-react";
 import Logo from "@/components/Logo";
 import { SpotoButton } from "@/design-system/components/button";
 import { SpotoCard } from "@/design-system/components/card";
-import { SpotoInput } from "@/design-system/components/input";
+import { SpotoInput, SpotoSelect } from "@/design-system/components/input";
+import { ApiError } from "@/lib/api/client";
 import { requestOtp, verifyOtp } from "@/lib/api/ranger";
 import { setSession } from "@/lib/auth/session";
-
-const MOCK_PHONE = "9999999999";
 
 export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState<"details" | "otp">("details");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [platform, setPlatform] = useState("other");
+  const [area, setArea] = useState("");
+  const [upiId, setUpiId] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -33,11 +35,13 @@ export default function OnboardingPage() {
     setError(null);
     setLoading(true);
     try {
-      await requestOtp(phone);
+      await requestOtp(phone, name.trim() || undefined);
       setStep("otp");
       toast.success("OTP sent");
-    } catch {
-      setError("Could not send OTP. Is the backend running?");
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.detail : "Could not send OTP. Please try again.";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -45,30 +49,29 @@ export default function OnboardingPage() {
 
   async function handleVerify() {
     if (code.length < 4) {
-      setError("Enter the 4-digit code.");
+      setError("Enter the OTP sent to your phone.");
       return;
     }
     setError(null);
     setLoading(true);
     try {
-      const res = await verifyOtp(phone, code);
-      if (res.status !== "verified") {
-        setError("Invalid code. Try 0000 for the demo account.");
+      const res = await verifyOtp(phone, code, {
+        fullName: name.trim() || undefined,
+        deliveryPlatform: platform || undefined,
+        preferredArea: area.trim() || undefined,
+        upiId: upiId.trim() || undefined,
+      });
+      if (res.status !== "verified" || !res.user || !res.token) {
+        setError(res.message || "Invalid or expired OTP. Please try again.");
         return;
       }
-      setSession(
-        res.user ?? {
-          id: phone,
-          fullName: name || "Ranger",
-          phone,
-          role: "ranger",
-          rangerId: null,
-        },
-      );
+      setSession(res.user, res.token);
       toast.success("Welcome to Spoto Ranger");
       router.push("/");
-    } catch {
-      setError("Verification failed. Please try again.");
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.detail : "Verification failed. Please try again.";
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -93,7 +96,7 @@ export default function OnboardingPage() {
               <label className="grid gap-2">
                 <span className="text-sm font-heading font-semibold text-spoto-ink">Your name</span>
                 <SpotoInput
-                  placeholder="Aman Ranger"
+                  placeholder="Your full name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   autoComplete="name"
@@ -110,6 +113,39 @@ export default function OnboardingPage() {
                   autoComplete="tel"
                 />
               </label>
+              <label className="grid gap-2">
+                <span className="text-sm font-heading font-semibold text-spoto-ink">
+                  Delivery platform
+                </span>
+                <SpotoSelect value={platform} onChange={(e) => setPlatform(e.target.value)}>
+                  <option value="zomato">Zomato</option>
+                  <option value="swiggy">Swiggy</option>
+                  <option value="blinkit">Blinkit</option>
+                  <option value="zepto">Zepto</option>
+                  <option value="bigbasket">BigBasket</option>
+                  <option value="swish">Swish</option>
+                  <option value="other">Other</option>
+                </SpotoSelect>
+              </label>
+              <label className="grid gap-2">
+                <span className="text-sm font-heading font-semibold text-spoto-ink">
+                  Preferred area
+                </span>
+                <SpotoInput
+                  placeholder="e.g. Indiranagar"
+                  value={area}
+                  onChange={(e) => setArea(e.target.value)}
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-sm font-heading font-semibold text-spoto-ink">UPI ID</span>
+                <SpotoInput
+                  placeholder="name@upi"
+                  value={upiId}
+                  onChange={(e) => setUpiId(e.target.value)}
+                  autoComplete="off"
+                />
+              </label>
               {error && <p className="text-sm font-medium text-red-400">{error}</p>}
               <SpotoButton
                 onClick={handleRequest}
@@ -118,11 +154,6 @@ export default function OnboardingPage() {
               >
                 {loading ? "Sending…" : "Send OTP"}
               </SpotoButton>
-              <p className="rounded-spoto bg-spoto-surface-2 px-4 py-3 text-center text-xs text-spoto-muted">
-                Demo login → phone{" "}
-                <span className="font-heading font-bold text-spoto-green">{MOCK_PHONE}</span>, OTP{" "}
-                <span className="font-heading font-bold text-spoto-green">0000</span>
-              </p>
             </>
           ) : (
             <>
@@ -132,7 +163,7 @@ export default function OnboardingPage() {
               </p>
               <SpotoInput
                 inputMode="numeric"
-                placeholder="0000"
+                placeholder="••••"
                 value={code}
                 maxLength={8}
                 className="text-center text-2xl tracking-[0.5em]"
@@ -154,7 +185,6 @@ export default function OnboardingPage() {
               >
                 ← Change number
               </button>
-              <p className="text-center text-xs text-spoto-muted">Use code 0000 for local development.</p>
             </>
           )}
         </SpotoCard>

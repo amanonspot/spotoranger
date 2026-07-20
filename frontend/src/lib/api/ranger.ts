@@ -4,6 +4,8 @@ import type { SessionUser } from "@/lib/auth/session";
 export type VerifyResponse = {
   status: "verified" | "invalid";
   user: SessionUser | null;
+  token: string | null;
+  message?: string | null;
 };
 
 export type LeadSummary = {
@@ -33,6 +35,8 @@ export type LeadDetail = LeadSummary & {
   flatNumber: string;
   floor: string;
   notes: string;
+  latitude?: number | null;
+  longitude?: number | null;
   statusHistory: LeadStatusHistory[];
 };
 
@@ -52,6 +56,13 @@ export type WalletSummary = {
   pendingRewards: number;
   withdrawnAmount: number;
   transactions: WalletTransaction[];
+  withdrawal?: {
+    id: string;
+    amount: number;
+    upiId: string;
+    status: string;
+    createdAt: string;
+  };
 };
 
 export type RangerProfile = {
@@ -73,22 +84,74 @@ export type NotificationItem = {
   createdAt: string;
 };
 
-export function requestOtp(phone: string): Promise<{ message: string }> {
+export type CreateLeadPayload = {
+  building_name: string;
+  area: string;
+  owner_name: string;
+  owner_phone: string;
+  bhk: "1_rk" | "1_bhk" | "2_bhk" | "3_bhk" | "4_bhk_plus";
+  monthly_rent: number;
+  deposit: number;
+  latitude?: number | null;
+  longitude?: number | null;
+  maps_place_id?: string;
+  flat_number?: string;
+  floor?: string;
+  notes?: string;
+};
+
+export type UpdateRangerPayload = {
+  fullName?: string;
+  deliveryPlatform?: string;
+  preferredArea?: string;
+  upiId?: string;
+};
+
+export function requestOtp(phone: string, fullName?: string): Promise<{ message: string }> {
   return apiClient("/auth/otp/request", {
     method: "POST",
-    body: JSON.stringify({ phone }),
+    body: JSON.stringify({ phone, fullName: fullName || undefined }),
   });
 }
 
-export function verifyOtp(phone: string, code: string): Promise<VerifyResponse> {
+export function verifyOtp(
+  phone: string,
+  code: string,
+  extras?: {
+    fullName?: string;
+    deliveryPlatform?: string;
+    preferredArea?: string;
+    upiId?: string;
+  },
+): Promise<VerifyResponse> {
   return apiClient("/auth/otp/verify", {
     method: "POST",
-    body: JSON.stringify({ phone, code }),
+    body: JSON.stringify({
+      phone,
+      code,
+      fullName: extras?.fullName,
+      deliveryPlatform: extras?.deliveryPlatform,
+      preferredArea: extras?.preferredArea,
+      upiId: extras?.upiId,
+    }),
   });
 }
 
 export function getWallet(rangerId: string): Promise<WalletSummary> {
   return apiClient(`/wallet/${rangerId}`);
+}
+
+export function requestWithdrawal(
+  rangerId: string,
+  payload?: { amount?: number; upiId?: string },
+): Promise<WalletSummary> {
+  return apiClient(`/wallet/${rangerId}/withdraw`, {
+    method: "POST",
+    body: JSON.stringify({
+      amount: payload?.amount,
+      upiId: payload?.upiId,
+    }),
+  });
 }
 
 export function listLeads(rangerId: string, status?: string): Promise<LeadSummary[]> {
@@ -101,10 +164,27 @@ export function getLead(id: string): Promise<LeadDetail> {
   return apiClient(`/properties/${id}`);
 }
 
+export function createLead(payload: CreateLeadPayload): Promise<LeadDetail> {
+  return apiClient("/properties", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getNotifications(userId: string): Promise<NotificationItem[]> {
   return apiClient(`/notifications?user_id=${userId}`);
 }
 
 export function getRangerProfile(rangerId: string): Promise<RangerProfile> {
   return apiClient(`/ranger/${rangerId}`);
+}
+
+export function updateRangerProfile(
+  rangerId: string,
+  payload: UpdateRangerPayload,
+): Promise<RangerProfile> {
+  return apiClient(`/ranger/${rangerId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }

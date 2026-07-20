@@ -1,0 +1,17 @@
+[Unit]
+Description=Spoto Ranger API (FastAPI / Uvicorn)
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/spotoranger/backend
+EnvironmentFile=/opt/spotoranger/.env
+ExecStart=/opt/spotoranger/backend/.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

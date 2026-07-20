@@ -52,3 +52,18 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != UserRole.ADMIN:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return user
+
+
+def require_ranger(user: User = Depends(get_current_user)) -> User:
+    if user.role != UserRole.RANGER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ranger access required")
+    return user
+
+
+def get_ranger_profile(user: User = Depends(require_ranger)):
+    from apps.core.models import RangerProfile
+
+    profile = RangerProfile.objects.filter(user=user).first()
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ranger profile not found")
+    return profile

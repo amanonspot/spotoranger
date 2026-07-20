@@ -27,8 +27,10 @@ jobs:
         working-directory: backend
     env:
       DATABASE_URL: postgresql://spoto:spoto@localhost:5432/spoto_ranger
-      DJANGO_SECRET_KEY: ci-secret
+      DJANGO_SECRET_KEY: ci-secret-not-for-production-use
       DJANGO_DEBUG: "false"
+      ENVIRONMENT: production
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
