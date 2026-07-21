@@ -1,4 +1,13 @@
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load env before Django setup so DATABASE_URL / secrets are available.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(_REPO_ROOT / ".env")
+load_dotenv(_BACKEND_ROOT / ".env")
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 
@@ -22,8 +31,9 @@ app.add_middleware(
     allow_origins=[
         origin.strip()
         for origin in os.getenv(
-            "CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001"
+            "CORS_ALLOWED_ORIGINS", "http://localhost:3000"
         ).split(",")
+        if origin.strip()
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -38,4 +48,3 @@ app.include_router(training.router, prefix="/training", tags=["training"])
 app.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 app.include_router(ranger.router, prefix="/ranger", tags=["ranger"])
 app.include_router(admin.router, prefix="/admin", tags=["admin"])
-

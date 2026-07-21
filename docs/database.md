@@ -1,5 +1,7 @@
 # Database
 
+**Engine: PostgreSQL only.** SQLite is rejected at startup.
+
 Core entities:
 
 - `users`
