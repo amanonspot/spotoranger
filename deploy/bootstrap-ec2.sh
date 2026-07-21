@@ -22,15 +22,24 @@ if [[ ! -d "${APP_DIR}/backend" || ! -d "${APP_DIR}/frontend" ]]; then
   exit 1
 fi
 
-# shellcheck disable=SC1091
-set -a
-# strip CR for Windows-edited .env files
+# Load .env safely (supports spaces in values; ignores blank/comment lines)
 tmp_env="$(mktemp)"
 tr -d '\r' < "${APP_DIR}/.env" > "${tmp_env}"
-# shellcheck disable=SC1090
-source "${tmp_env}"
+while IFS= read -r line || [[ -n "${line}" ]]; do
+  [[ -z "${line}" || "${line}" =~ ^[[:space:]]*# ]] && continue
+  key="${line%%=*}"
+  val="${line#*=}"
+  # trim key whitespace
+  key="$(echo "${key}" | tr -d '[:space:]')"
+  # strip surrounding quotes from value
+  if [[ "${val}" =~ ^\".*\"$ ]]; then
+    val="${val:1:-1}"
+  elif [[ "${val}" =~ ^\'.*\'$ ]]; then
+    val="${val:1:-1}"
+  fi
+  export "${key}=${val}"
+done < "${tmp_env}"
 rm -f "${tmp_env}"
-set +a
 
 : "${POSTGRES_DB:=spoto_ranger}"
 : "${POSTGRES_USER:=spoto}"
@@ -121,14 +130,22 @@ if [[ -n "${PUBLIC_IP}" ]]; then
   fi
 fi
 
-# Re-source after possible sed
-set -a
+# Re-load .env after possible sed
 tmp_env="$(mktemp)"
 tr -d '\r' < "${APP_DIR}/.env" > "${tmp_env}"
-# shellcheck disable=SC1090
-source "${tmp_env}"
+while IFS= read -r line || [[ -n "${line}" ]]; do
+  [[ -z "${line}" || "${line}" =~ ^[[:space:]]*# ]] && continue
+  key="${line%%=*}"
+  val="${line#*=}"
+  key="$(echo "${key}" | tr -d '[:space:]')"
+  if [[ "${val}" =~ ^\".*\"$ ]]; then
+    val="${val:1:-1}"
+  elif [[ "${val}" =~ ^\'.*\'$ ]]; then
+    val="${val:1:-1}"
+  fi
+  export "${key}=${val}"
+done < "${tmp_env}"
 rm -f "${tmp_env}"
-set +a
 
 if [[ -z "${NEXT_PUBLIC_API_BASE_URL:-}" || "${NEXT_PUBLIC_API_BASE_URL}" == *"YOUR_PUBLIC_IP"* ]]; then
   if [[ -n "${PUBLIC_IP}" ]]; then
