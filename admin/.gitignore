@@ -1,0 +1,16 @@
+.env
+.env*.local
+.DS_Store
+
+# Node / Next
+node_modules/
+.next/
+out/
+build/
+npm-debug.log*
+next-env.d.ts
+*.tsbuildinfo
+
+# Tooling
+.claude/
+coverage/
