@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 class RequestOtpPayload(BaseModel):
     phone: str = Field(min_length=10, max_length=20)
     fullName: str | None = Field(default=None, max_length=160)
+    # login = existing account only; register = new account only (verified phones blocked)
+    intent: str = Field(default="login", pattern="^(login|register)$")
 
 
 class VerifyOtpPayload(BaseModel):
@@ -164,7 +166,36 @@ def request_otp(payload: RequestOtpPayload) -> dict[str, str]:
     if len(phone) != 10:
         raise HTTPException(status_code=400, detail="Enter a valid 10-digit mobile number")
 
-    user = _get_or_create_user(phone, payload.fullName)
+    existing = User.objects.filter(phone=phone).first()
+    intent = payload.intent
+
+    if intent == "login":
+        if existing is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No account found for this number. Please register first.",
+            )
+        user = existing
+        if payload.fullName and payload.fullName.strip() and not user.full_name.strip():
+            user.full_name = payload.fullName.strip()
+            user.save(update_fields=["full_name", "updated_at"])
+    else:
+        # register — verified account cannot register again
+        if existing is not None and existing.is_phone_verified:
+            raise HTTPException(
+                status_code=409,
+                detail="An account already exists with this number. Please login.",
+            )
+        if existing is None:
+            if not (payload.fullName or "").strip():
+                raise HTTPException(status_code=400, detail="Full name is required to register")
+            user = _get_or_create_user(phone, payload.fullName)
+        else:
+            # Incomplete signup (OTP never verified) — allow retry, refresh name
+            user = existing
+            if payload.fullName and payload.fullName.strip():
+                user.full_name = payload.fullName.strip()
+                user.save(update_fields=["full_name", "updated_at"])
 
     # Default phone: skip SMS (same behaviour as Spoto main backend).
     if _has_default_login() and phone == _default_phone():
@@ -173,7 +204,7 @@ def request_otp(payload: RequestOtpPayload) -> dict[str, str]:
             code_hash=_default_otp(),
             expires_at=timezone.now() + timedelta(minutes=_otp_expiry_minutes()),
         )
-        return {"message": "OTP sent", "msg": "Successfully generated OTP"}
+        return {"message": "OTP sent", "msg": "Successfully generated OTP", "intent": intent}
 
     otp = str(random.randint(1000, 9999))
     expiry = timezone.now() + timedelta(minutes=_otp_expiry_minutes())
@@ -193,7 +224,7 @@ def request_otp(payload: RequestOtpPayload) -> dict[str, str]:
             raise HTTPException(status_code=502, detail="Could not send OTP. Please try again.")
         logger.info("SMS not sent for %s — OTP stored for verify: %s", phone, otp)
 
-    return {"message": "OTP sent", "msg": "Successfully generated OTP"}
+    return {"message": "OTP sent", "msg": "Successfully generated OTP", "intent": intent}
 
 
 @router.post("/otp/verify")

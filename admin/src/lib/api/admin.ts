@@ -83,7 +83,10 @@ export type RangerDetail = {
 };
 
 export function requestOtp(phone: string): Promise<{ message: string }> {
-  return apiClient("/auth/otp/request", { method: "POST", body: JSON.stringify({ phone }) });
+  return apiClient("/auth/otp/request", {
+    method: "POST",
+    body: JSON.stringify({ phone, intent: "login" }),
+  });
 }
 
 export function verifyOtp(phone: string, code: string): Promise<VerifyResponse> {

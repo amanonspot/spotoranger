@@ -4,8 +4,13 @@ FastAPI serves OpenAPI documentation at `/docs`.
 
 ## Auth
 
-- `POST /auth/otp/request` — body `{ phone, fullName? }` → SMS OTP via 2Factor (DLT). Demo phone skips SMS.
+- `POST /auth/otp/request` — body `{ phone, intent: "login"|"register", fullName? }`
+  - `login` — existing phone only; `404` if no account
+  - `register` — new phone only; `409` if already verified; `fullName` required
+  - Demo phone (`DEFAULT_LOGIN_PHONE_NUMBER`) skips SMS and uses `DEFAULT_OTP`
 - `POST /auth/otp/verify` — body `{ phone, code, fullName?, deliveryPlatform?, preferredArea?, upiId? }` → `{ status, user, token }`
+
+Phone is unique — the same number cannot create a second account.
 
 Authenticated requests send `Authorization: Bearer <token>`.
 
