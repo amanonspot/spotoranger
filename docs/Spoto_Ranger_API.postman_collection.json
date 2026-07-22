@@ -1,0 +1,348 @@
+{
+  "info": {
+    "_postman_id": "spoto-ranger-api-2026",
+    "name": "Spoto Ranger API",
+    "description": "REST API for Spoto Ranger Platform (Ranger PWA + Admin Console).\n\n**Base URLs**\n- Production (nginx): `http://3.110.101.147/api`\n- Local: `http://localhost:8000`\n\n**Auth flow**\n1. `POST /auth/otp/request` with `intent: login|register`\n2. `POST /auth/otp/verify` → copy `token` + `user.rangerId`\n3. Set collection variable `token` (auto-saved by Verify OTP tests)\n4. Use Bearer token on protected routes\n\n**Roles**\n- `ranger` — lead submit, wallet, profile\n- `admin` — `/admin/*` only\n\nOpenAPI live docs: `{{baseUrl}}/docs`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://3.110.101.147/api" },
+    { "key": "token", "value": "" },
+    { "key": "rangerId", "value": "" },
+    { "key": "propertyId", "value": "" },
+    { "key": "phone", "value": "7002130551" },
+    { "key": "otp", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "0. Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health",
+            "description": "Public. Expect `{ \"status\": \"ok\" }`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Auth (OTP)",
+      "item": [
+        {
+          "name": "Request OTP — Register",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{phone}}\",\n  \"intent\": \"register\",\n  \"fullName\": \"Test Ranger\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/otp/request",
+            "description": "New phone only. `fullName` required.\n\nErrors:\n- `409` — account already exists → use Login\n- `400` — missing name / invalid phone"
+          }
+        },
+        {
+          "name": "Request OTP — Login",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{phone}}\",\n  \"intent\": \"login\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/otp/request",
+            "description": "Existing phone only.\n\nErrors:\n- `404` — no account → Register first"
+          }
+        },
+        {
+          "name": "Verify OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const json = pm.response.json();",
+                  "  if (json.token) pm.collectionVariables.set('token', json.token);",
+                  "  if (json.user && json.user.rangerId) pm.collectionVariables.set('rangerId', json.user.rangerId);",
+                  "  if (json.user) {",
+                  "    console.log('role=', json.user.role, 'name=', json.user.fullName);",
+                  "  }",
+                  "} catch (e) { console.warn(e); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{phone}}\",\n  \"code\": \"{{otp}}\",\n  \"fullName\": \"Test Ranger\",\n  \"deliveryPlatform\": \"swiggy\",\n  \"preferredArea\": \"Indiranagar\",\n  \"upiId\": \"test@upi\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/otp/verify",
+            "description": "Returns `{ status, user, token }`.\n\nFor **login**, body only needs `phone` + `code`.\nFor **register**, also send profile fields.\n\n`user.role`: `ranger` | `admin` | `recruiter`\n`user.rangerId`: use for wallet/profile routes.\n\nTests auto-save `token` and `rangerId`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Ranger profile",
+      "item": [
+        {
+          "name": "Get profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/ranger/{{rangerId}}",
+            "description": "Bearer required. Ranger can only read own profile."
+          }
+        },
+        {
+          "name": "Update profile",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Test Ranger\",\n  \"deliveryPlatform\": \"swiggy\",\n  \"preferredArea\": \"Koramangala\",\n  \"upiId\": \"ranger@upi\"\n}"
+            },
+            "url": "{{baseUrl}}/ranger/{{rangerId}}",
+            "description": "Platforms: zomato | swiggy | blinkit | zepto | bigbasket | swish | other"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Properties (leads)",
+      "item": [
+        {
+          "name": "List my leads",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/properties",
+              "host": ["{{baseUrl}}"],
+              "path": ["properties"],
+              "query": [
+                { "key": "status", "value": "submitted", "disabled": true }
+              ]
+            },
+            "description": "Ranger sees only own leads. Optional `?status=`."
+          }
+        },
+        {
+          "name": "Submit lead",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const json = pm.response.json();",
+                  "  if (json.id) pm.collectionVariables.set('propertyId', json.id);",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"building_name\": \"Sunrise Apartments\",\n  \"area\": \"Indiranagar\",\n  \"owner_name\": \"Ramesh Kumar\",\n  \"owner_phone\": \"9876543210\",\n  \"bhk\": \"2_bhk\",\n  \"monthly_rent\": 25000,\n  \"deposit\": 50000,\n  \"flat_number\": \"3B\",\n  \"floor\": \"3\",\n  \"notes\": \"Near metro\",\n  \"latitude\": 12.9784,\n  \"longitude\": 77.6408,\n  \"maps_place_id\": \"\"\n}"
+            },
+            "url": "{{baseUrl}}/properties",
+            "description": "Requires ranger JWT.\n\n`bhk`: `1_rk` | `1_bhk` | `2_bhk` | `3_bhk` | `4_bhk_plus`\n\nSaves `propertyId` from response."
+          }
+        },
+        {
+          "name": "Get lead detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/properties/{{propertyId}}",
+            "description": "Includes `statusHistory`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Wallet",
+      "item": [
+        {
+          "name": "Get wallet",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/wallet/{{rangerId}}",
+            "description": "Balance, lifetime earnings, transactions."
+          }
+        },
+        {
+          "name": "Request withdrawal",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100,\n  \"upiId\": \"ranger@upi\"\n}"
+            },
+            "url": "{{baseUrl}}/wallet/{{rangerId}}/withdraw",
+            "description": "Min amount from env (usually ₹100). UPI required on profile or in body."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Notifications & Training",
+      "item": [
+        {
+          "name": "List notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "user_id", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List training articles",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/training"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Admin (role=admin JWT)",
+      "item": [
+        {
+          "name": "Dashboard stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/admin/stats"
+          }
+        },
+        {
+          "name": "List submissions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/submissions",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "submissions"],
+              "query": [
+                { "key": "status", "value": "submitted", "disabled": true },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "ranger_id", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get submission",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/admin/submissions/{{propertyId}}"
+          }
+        },
+        {
+          "name": "Change submission status",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"verified\",\n  \"reason\": \"Docs look good\",\n  \"suggestion\": \"\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/submissions/{{propertyId}}/status",
+            "description": "Statuses: submitted | under_review | need_more_information | verified | listed_on_spoto | reward_credited | duplicate | rejected"
+          }
+        },
+        {
+          "name": "Send reward",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/admin/submissions/{{propertyId}}/reward",
+            "description": "After verified — credits reward to ranger wallet."
+          }
+        },
+        {
+          "name": "List rangers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/admin/rangers",
+            "description": "Only users with role=ranger."
+          }
+        },
+        {
+          "name": "Get ranger",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/admin/rangers/{{rangerId}}"
+          }
+        },
+        {
+          "name": "Invite ranger",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"9999999999\"\n}"
+            },
+            "url": "{{baseUrl}}/admin/rangers/invite",
+            "description": "Requires admin to have a recruiter profile."
+          }
+        },
+        {
+          "name": "Get demo listing",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/admin/demo"
+          }
+        },
+        {
+          "name": "Reset demo listing",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/admin/demo/reset"
+          }
+        }
+      ]
+    }
+  ]
+}
