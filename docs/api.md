@@ -2,6 +2,9 @@
 
 FastAPI serves OpenAPI documentation at `/docs`.
 
+**Postman:** [`docs/Spoto_Ranger_API.postman_collection.json`](./Spoto_Ranger_API.postman_collection.json)  
+Import in Postman → set `baseUrl` to `http://3.110.101.147/api` (prod) or `http://localhost:8000` (local).
+
 ## Auth
 
 - `POST /auth/otp/request` — body `{ phone, intent: "login"|"register", fullName? }`
