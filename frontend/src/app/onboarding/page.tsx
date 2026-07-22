@@ -101,6 +101,15 @@ export default function OnboardingPage() {
         setError(res.message || "Invalid or expired OTP. Please try again.");
         return;
       }
+      if (res.user.role === "admin") {
+        const { writeAdminSession, goToAdminConsole } = await import(
+          "@/lib/auth/admin-bridge"
+        );
+        writeAdminSession(res.user, res.token);
+        toast.success("Welcome to Admin Console");
+        goToAdminConsole();
+        return;
+      }
       setSession(res.user, res.token);
       toast.success(mode === "register" ? "Account created — welcome!" : "Welcome back");
       router.push("/");

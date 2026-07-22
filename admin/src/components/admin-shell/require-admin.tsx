@@ -1,20 +1,20 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 
 import { useSession } from "@/lib/auth/session";
 
 export function RequireAdmin({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const { session, loading } = useSession();
   const isAdmin = session?.user.role === "admin";
 
   useEffect(() => {
-    if (!loading && !isAdmin) {
-      router.replace("/login");
+    if (loading) return;
+    if (!isAdmin) {
+      // Shared login lives on the Ranger app (same host).
+      window.location.replace("/onboarding");
     }
-  }, [loading, isAdmin, router]);
+  }, [loading, isAdmin]);
 
   if (loading || !isAdmin) {
     return (

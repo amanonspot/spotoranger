@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { LogOut } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -11,12 +11,11 @@ import { clearSession, useSession } from "@/lib/auth/session";
 
 export function SideNav() {
   const pathname = usePathname();
-  const router = useRouter();
   const { session } = useSession();
 
   function logout() {
     clearSession();
-    router.replace("/login");
+    window.location.replace("/onboarding");
   }
 
   return (

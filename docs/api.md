@@ -9,6 +9,8 @@ FastAPI serves OpenAPI documentation at `/docs`.
   - `register` — new phone only; `409` if already verified; `fullName` required
   - Demo phone (`DEFAULT_LOGIN_PHONE_NUMBER`) skips SMS and uses `DEFAULT_OTP`
 - `POST /auth/otp/verify` — body `{ phone, code, fullName?, deliveryPlatform?, preferredArea?, upiId? }` → `{ status, user, token }`
+  - `user.role` is `ranger` | `admin` | `recruiter`
+  - Ranger PWA and Admin Console share the same OTP login (`/onboarding`); admins are redirected to `/console`
 
 Phone is unique — the same number cannot create a second account.
 
