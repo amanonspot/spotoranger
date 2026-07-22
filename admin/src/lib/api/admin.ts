@@ -5,6 +5,7 @@ export type VerifyResponse = {
   status: "verified" | "invalid";
   user: SessionUser | null;
   token: string | null;
+  message?: string | null;
 };
 
 export type AdminStats = {

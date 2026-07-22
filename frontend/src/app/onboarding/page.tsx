@@ -114,28 +114,28 @@ export default function OnboardingPage() {
   }
 
   return (
-    <main className="spoto-glow relative flex min-h-screen flex-col items-center justify-center px-4 py-10">
-      <div className="relative z-10 w-full max-w-md">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <Logo width={180} height={52} />
-          <p className="mt-1 text-xs font-heading font-semibold uppercase tracking-[0.3em] text-spoto-purple">
+    <main className="spoto-glow relative grid min-h-dvh place-items-center px-4 py-8">
+      <div className="relative z-10 flex w-full max-w-[420px] flex-col items-center">
+        <header className="mb-8 flex w-full flex-col items-center text-center">
+          <Logo width={168} height={48} />
+          <p className="mt-3 text-[11px] font-heading font-semibold uppercase tracking-[0.28em] text-spoto-purple">
             Ranger
           </p>
-          <p className="mt-3 text-sm text-spoto-muted">
+          <p className="mt-2 max-w-xs text-sm leading-relaxed text-spoto-muted">
             Submit rental leads. Earn rewards. Track everything.
           </p>
-        </div>
+        </header>
 
-        <SpotoCard className="grid gap-4">
+        <SpotoCard className="w-full grid gap-5 p-6 sm:p-7">
           {step === "details" ? (
             <>
-              <div className="grid grid-cols-2 gap-2 rounded-xl bg-spoto-bg/60 p-1">
+              <div className="grid grid-cols-2 gap-1 rounded-spoto bg-spoto-bg/70 p-1">
                 <button
                   type="button"
                   onClick={() => switchMode("login")}
                   className={`rounded-lg py-2.5 text-sm font-heading font-semibold transition ${
                     mode === "login"
-                      ? "bg-spoto-purple text-white"
+                      ? "bg-spoto-purple text-white shadow-sm"
                       : "text-spoto-muted hover:text-spoto-ink"
                   }`}
                 >
@@ -146,7 +146,7 @@ export default function OnboardingPage() {
                   onClick={() => switchMode("register")}
                   className={`rounded-lg py-2.5 text-sm font-heading font-semibold transition ${
                     mode === "register"
-                      ? "bg-spoto-purple text-white"
+                      ? "bg-spoto-purple text-white shadow-sm"
                       : "text-spoto-muted hover:text-spoto-ink"
                   }`}
                 >
@@ -154,10 +154,10 @@ export default function OnboardingPage() {
                 </button>
               </div>
 
-              <p className="text-sm text-spoto-muted">
+              <p className="text-center text-sm text-spoto-muted sm:text-left">
                 {mode === "login"
-                  ? "Already have an account? Enter your mobile number to get an OTP."
-                  : "New here? Create your Ranger account with the details below."}
+                  ? "Enter your mobile number to receive a login OTP."
+                  : "Create your Ranger account with the details below."}
               </p>
 
               {mode === "register" && (
@@ -228,12 +228,16 @@ export default function OnboardingPage() {
                 </>
               )}
 
-              {error && <p className="text-sm font-medium text-red-400">{error}</p>}
+              {error && (
+                <p className="rounded-spoto border border-red-500/30 bg-red-500/10 px-3 py-2 text-center text-sm text-red-300">
+                  {error}
+                </p>
+              )}
 
               {mode === "login" && error?.toLowerCase().includes("register") && (
                 <button
                   type="button"
-                  className="text-sm font-heading font-semibold text-spoto-purple"
+                  className="text-center text-sm font-heading font-semibold text-spoto-purple"
                   onClick={() => switchMode("register")}
                 >
                   Create a new account →
@@ -242,7 +246,7 @@ export default function OnboardingPage() {
               {mode === "register" && error?.toLowerCase().includes("login") && (
                 <button
                   type="button"
-                  className="text-sm font-heading font-semibold text-spoto-purple"
+                  className="text-center text-sm font-heading font-semibold text-spoto-purple"
                   onClick={() => switchMode("login")}
                 >
                   Go to login →
@@ -253,36 +257,46 @@ export default function OnboardingPage() {
                 onClick={handleRequest}
                 disabled={loading}
                 icon={<ArrowRight className="h-5 w-5" />}
+                className="w-full"
               >
                 {loading ? "Sending…" : "Send OTP"}
               </SpotoButton>
             </>
           ) : (
             <>
-              <p className="text-sm text-spoto-muted">
-                {mode === "login" ? "Login" : "Register"} — enter the code sent to{" "}
-                <span className="font-heading font-semibold text-spoto-ink">{phone}</span>.
-              </p>
+              <div className="grid gap-1.5 text-center sm:text-left">
+                <h1 className="font-heading text-lg font-semibold text-spoto-ink">
+                  {mode === "login" ? "Verify & login" : "Verify & register"}
+                </h1>
+                <p className="text-sm text-spoto-muted">
+                  Code sent to{" "}
+                  <span className="font-heading font-semibold text-spoto-ink">{phone}</span>
+                </p>
+              </div>
               <SpotoInput
                 inputMode="numeric"
                 placeholder="••••"
                 value={code}
                 maxLength={8}
-                className="text-center text-2xl tracking-[0.5em]"
+                className="h-14 text-center text-2xl tracking-[0.4em]"
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
                 autoFocus
               />
-              {error && <p className="text-sm font-medium text-red-400">{error}</p>}
-              <SpotoButton variant="cta" onClick={handleVerify} disabled={loading}>
+              {error && (
+                <p className="rounded-spoto border border-red-500/30 bg-red-500/10 px-3 py-2 text-center text-sm text-red-300">
+                  {error}
+                </p>
+              )}
+              <SpotoButton variant="cta" onClick={handleVerify} disabled={loading} className="w-full">
                 {loading
                   ? "Verifying…"
                   : mode === "login"
-                    ? "Verify & Login"
-                    : "Verify & Register"}
+                    ? "Verify & login"
+                    : "Verify & register"}
               </SpotoButton>
               <button
                 type="button"
-                className="text-sm font-heading font-semibold text-spoto-muted hover:text-white"
+                className="text-center text-sm font-heading font-semibold text-spoto-muted transition hover:text-spoto-ink"
                 onClick={() => {
                   setStep("details");
                   setCode("");
