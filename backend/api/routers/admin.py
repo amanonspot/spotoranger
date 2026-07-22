@@ -14,6 +14,7 @@ from apps.core.models import (
     PropertyStatusHistory,
     RangerProfile,
     User,
+    UserRole,
     Wallet,
     WalletTransaction,
 )
@@ -73,7 +74,9 @@ def admin_stats(admin: User = Depends(require_admin)) -> dict[str, object]:
         "listed": by_status.get(PropertyStatus.LISTED, 0),
         "rewardCredited": by_status.get(PropertyStatus.REWARD_CREDITED, 0),
         "rewardsPaid": rewards_paid,
-        "activeRangers": RangerProfile.objects.filter(is_active_ranger=True).count(),
+        "activeRangers": RangerProfile.objects.filter(
+            is_active_ranger=True, user__role=UserRole.RANGER
+        ).count(),
         "byStatus": by_status,
     }
 
@@ -224,8 +227,10 @@ def get_demo(admin: User = Depends(require_admin)) -> dict[str, object]:
 # ------------------------------------------------------------------- rangers
 @router.get("/rangers")
 def list_rangers(admin: User = Depends(require_admin)) -> list[dict[str, object]]:
+    # One phone = one role. Old RangerProfile rows for admins must not appear here.
     rangers = (
         RangerProfile.objects.select_related("user", "wallet")
+        .filter(user__role=UserRole.RANGER)
         .annotate(submission_count=Count("properties"))
         .order_by("user__full_name")
     )
@@ -249,7 +254,7 @@ def list_rangers(admin: User = Depends(require_admin)) -> list[dict[str, object]
 def get_ranger(ranger_id: str, admin: User = Depends(require_admin)) -> dict[str, object]:
     r = (
         RangerProfile.objects.select_related("user")
-        .filter(id=ranger_id)
+        .filter(id=ranger_id, user__role=UserRole.RANGER)
         .first()
     )
     if r is None:
