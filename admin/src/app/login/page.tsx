@@ -50,7 +50,7 @@ export default function AdminLoginPage() {
     try {
       const res = await verifyOtp(phone, code);
       if (res.status !== "verified" || !res.user || !res.token) {
-        setError("Invalid code. Try 0000 for the demo admin.");
+        setError("Invalid code. Check SMS OTP or your DEFAULT_OTP.");
         return;
       }
       if (res.user.role !== "admin") {

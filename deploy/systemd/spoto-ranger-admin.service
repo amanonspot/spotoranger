@@ -1,17 +1,17 @@
 [Unit]
-Description=Spoto Ranger Web (Next.js)
+Description=Spoto Ranger Admin (Next.js)
 After=network.target
 
 [Service]
 Type=simple
 User=ubuntu
 Group=ubuntu
-WorkingDirectory=/opt/spotoranger/frontend
-EnvironmentFile=/opt/spotoranger/.env
+WorkingDirectory=/opt/spotoranger/admin
+EnvironmentFile=/opt/spotoranger/admin/.env
 Environment=NODE_ENV=production
-Environment=PORT=3000
+Environment=PORT=3001
 Environment=HOSTNAME=127.0.0.1
-ExecStart=/usr/bin/npm run start -- -H 127.0.0.1 -p 3000
+ExecStart=/usr/bin/npm run start -- -H 127.0.0.1 -p 3001
 Restart=always
 RestartSec=5
 

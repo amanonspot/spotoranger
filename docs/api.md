@@ -25,3 +25,5 @@ Authenticated requests send `Authorization: Bearer <token>`.
 ## Admin
 
 - `/admin/*` — review, verify, reward (JWT admin role required)
+
+Admin UI lives in `admin/` and calls these APIs. On EC2 it is served at `/console`.

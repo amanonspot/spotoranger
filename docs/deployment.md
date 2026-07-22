@@ -1,6 +1,6 @@
 # Minimum-cost AWS deploy (single EC2)
 
-Cheapest production setup: **one EC2** runs Nginx + Next.js + FastAPI + PostgreSQL.
+Cheapest production setup: **one EC2** runs Nginx + Ranger + Admin + FastAPI + PostgreSQL.
 
 No RDS, no Redis, no Docker, no ALB.
 
@@ -15,7 +15,8 @@ No RDS, no Redis, no Docker, no ALB.
 ```mermaid
 flowchart LR
   User --> Nginx
-  Nginx -->|"/"| Next["Next.js :3000"]
+  Nginx -->|"/"| Ranger["Next.js :3000"]
+  Nginx -->|"/console"| Admin["Next.js :3001"]
   Nginx -->|"/api/"| API["Uvicorn :8000"]
   API --> PG["Postgres on EC2"]
 ```
@@ -30,8 +31,9 @@ flowchart LR
    - SSH `22` — your IP only
    - HTTP `80` — `0.0.0.0/0`
    - (Later) HTTPS `443` — `0.0.0.0/0`
+   - Do **not** open `3000` / `3001` / `8000` / `5432` publicly
 4. **Launch instance**
-   - AMI: Ubuntu Server 22.04 LTS
+   - AMI: Ubuntu Server 22.04 or 24.04 LTS
    - Type: `t3.micro` (or `t2.micro` on free tier)
    - Storage: **20 GB gp3**
    - Attach the security group + key pair
@@ -81,7 +83,7 @@ DATABASE_URL=postgresql://spoto:<strong-password>@127.0.0.1:5432/spoto_ranger
 # Replace PUBLIC_IP with the EC2 public IP (or Elastic IP)
 NEXT_PUBLIC_API_BASE_URL=http://PUBLIC_IP/api
 DJANGO_ALLOWED_HOSTS=PUBLIC_IP,localhost,127.0.0.1
-CORS_ALLOWED_ORIGINS=http://PUBLIC_IP
+CORS_ALLOWED_ORIGINS=http://PUBLIC_IP,http://localhost:3000,http://localhost:3001
 
 # SMS / DLT keys
 SMS_API_KEY=...
@@ -90,7 +92,9 @@ DLT_TEMPLATE_ID=...
 DLT_PE_ID=...
 ```
 
-Redis is unused — leave `REDIS_URL` blank or delete it.
+Redis is unused — leave `REDIS_URL` blank.
+
+Bootstrap writes `admin/.env` automatically with `NEXT_PUBLIC_BASE_PATH=/console`.
 
 ---
 
@@ -101,30 +105,32 @@ cd /opt/spotoranger
 sudo bash deploy/bootstrap-ec2.sh
 ```
 
-This installs Postgres, Node 22, Nginx, Python venv, runs migrations, builds the frontend, and enables systemd services.
+This installs Postgres, Node 22, Nginx, Python venv, runs migrations, builds **Ranger + Admin**, and enables systemd services.
 
 When it finishes:
 
 | URL | What |
 |-----|------|
 | `http://PUBLIC_IP` | Ranger website |
+| `http://PUBLIC_IP/console` | Admin console |
 | `http://PUBLIC_IP/api/docs` | FastAPI docs |
 | `http://PUBLIC_IP/api/health` | Health check |
+
+Create an admin user (Django shell or your preferred seed) before logging into `/console`.
 
 ---
 
 ## 5. Useful commands
 
 ```bash
-sudo systemctl status spoto-ranger-api spoto-ranger-web nginx
+sudo systemctl status spoto-ranger-api spoto-ranger-web spoto-ranger-admin nginx
 sudo journalctl -u spoto-ranger-api -f
 sudo journalctl -u spoto-ranger-web -f
+sudo journalctl -u spoto-ranger-admin -f
 
-# After changing .env API URL — rebuild frontend
-cd /opt/spotoranger/frontend
-source ../backend/.venv/bin/activate  # not required for npm
-npm run build
-sudo systemctl restart spoto-ranger-web
+# After changing API URL — rebuild both Next apps
+cd /opt/spotoranger/frontend && npm run build && sudo systemctl restart spoto-ranger-web
+cd /opt/spotoranger/admin && npm run build && sudo systemctl restart spoto-ranger-admin
 ```
 
 ---
@@ -135,8 +141,8 @@ sudo systemctl restart spoto-ranger-web
 
 1. Point domain A-record → Elastic IP  
 2. Update `.env` hosts/CORS/`NEXT_PUBLIC_API_BASE_URL` to `https://yourdomain.com/api`  
-3. Rebuild frontend  
-4. Switch Nginx to domain config or keep path `/api/`  
+3. Rebuild frontend + admin  
+4. Switch Nginx to domain config or keep path `/api/` + `/console`  
 5. `sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx`
 
 ### Tiny Postgres backup cron
@@ -154,7 +160,7 @@ sudo systemctl restart spoto-ranger-web
 - [ ] Postgres on EC2 — **not** RDS  
 - [ ] No Redis / ElastiCache  
 - [ ] No Application Load Balancer  
-- [ ] Security group: only 22 + 80 (+ 443 later)  
+- [ ] Security group: only 22 + 80 (+ 443 later) — not 3001/8000/5432  
 - [ ] Stop the instance when not testing (billing pauses compute; EBS still costs a little)
 
 ## Files in this repo
@@ -162,6 +168,6 @@ sudo systemctl restart spoto-ranger-web
 | Path | Purpose |
 |------|---------|
 | [`deploy/bootstrap-ec2.sh`](../deploy/bootstrap-ec2.sh) | Full server setup |
-| [`deploy/nginx/spoto-ranger-ip.conf`](../deploy/nginx/spoto-ranger-ip.conf) | Single-IP `/` + `/api/` proxy |
-| [`deploy/nginx/spoto-ranger.conf`](../deploy/nginx/spoto-ranger.conf) | Optional dual-domain setup |
-| [`deploy/systemd/*.service`](../deploy/systemd/) | API + web process managers |
+| [`deploy/nginx/spoto-ranger-ip.conf`](../deploy/nginx/spoto-ranger-ip.conf) | `/` + `/console` + `/api/` |
+| [`deploy/nginx/spoto-ranger.conf`](../deploy/nginx/spoto-ranger.conf) | Optional domain setup |
+| [`deploy/systemd/*.service`](../deploy/systemd/) | API + Ranger + Admin |

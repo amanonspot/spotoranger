@@ -1,4 +1,6 @@
 .env
+.env.local
+.env*.local
 .DS_Store
 
 # Python
@@ -18,11 +20,16 @@ npm-debug.log*
 next-env.d.ts
 *.tsbuildinfo
 
+# Backups / dumps
+backups/
+*.sql.gz
+*.dump
+
 # Tooling
 .coverage
 coverage/
 .claude/
-
+*.pem
 
 # Local-only platform docs (keep out of git)
 SPOTO_PLATFORM_DOCS.md

@@ -31,7 +31,8 @@ app.add_middleware(
     allow_origins=[
         origin.strip()
         for origin in os.getenv(
-            "CORS_ALLOWED_ORIGINS", "http://localhost:3000"
+            "CORS_ALLOWED_ORIGINS",
+            "http://localhost:3000,http://localhost:3001",
         ).split(",")
         if origin.strip()
     ],
