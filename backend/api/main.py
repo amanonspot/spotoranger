@@ -20,10 +20,18 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.routers import admin, auth, health, notifications, properties, ranger, training, wallet
 
+_ENVIRONMENT = os.getenv("ENVIRONMENT", "production").lower()
+_DOCS_ENABLED = os.getenv("API_DOCS_ENABLED", "false").lower() == "true"
+# Swagger / ReDoc stay off in production unless API_DOCS_ENABLED=true
+_enable_docs = _DOCS_ENABLED or _ENVIRONMENT in {"local", "development", "dev"}
+
 app = FastAPI(
     title="Spoto Ranger API",
     version="0.1.0",
     description="REST APIs for the Spoto Ranger Platform.",
+    docs_url="/docs" if _enable_docs else None,
+    redoc_url="/redoc" if _enable_docs else None,
+    openapi_url="/openapi.json" if _enable_docs else None,
 )
 
 app.add_middleware(
@@ -31,7 +39,8 @@ app.add_middleware(
     allow_origins=[
         origin.strip()
         for origin in os.getenv(
-            "CORS_ALLOWED_ORIGINS", "http://localhost:3000"
+            "CORS_ALLOWED_ORIGINS",
+            "http://localhost:3000,http://localhost:3001",
         ).split(",")
         if origin.strip()
     ],

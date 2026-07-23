@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Min-cost Spoto Ranger bootstrap for a single Ubuntu EC2.
+# Installs: Postgres + API + Ranger web + Admin console + Nginx
 # Usage (as root):  sudo bash deploy/bootstrap-ec2.sh
 set -euo pipefail
 
@@ -17,29 +18,32 @@ if [[ ! -f "${APP_DIR}/.env" ]]; then
   exit 1
 fi
 
-if [[ ! -d "${APP_DIR}/backend" || ! -d "${APP_DIR}/frontend" ]]; then
-  echo "Expected backend/ and frontend/ under ${APP_DIR}"
+if [[ ! -d "${APP_DIR}/backend" || ! -d "${APP_DIR}/frontend" || ! -d "${APP_DIR}/admin" ]]; then
+  echo "Expected backend/, frontend/, and admin/ under ${APP_DIR}"
   exit 1
 fi
 
-# Load .env safely (supports spaces in values; ignores blank/comment lines)
-tmp_env="$(mktemp)"
-tr -d '\r' < "${APP_DIR}/.env" > "${tmp_env}"
-while IFS= read -r line || [[ -n "${line}" ]]; do
-  [[ -z "${line}" || "${line}" =~ ^[[:space:]]*# ]] && continue
-  key="${line%%=*}"
-  val="${line#*=}"
-  # trim key whitespace
-  key="$(echo "${key}" | tr -d '[:space:]')"
-  # strip surrounding quotes from value
-  if [[ "${val}" =~ ^\".*\"$ ]]; then
-    val="${val:1:-1}"
-  elif [[ "${val}" =~ ^\'.*\'$ ]]; then
-    val="${val:1:-1}"
-  fi
-  export "${key}=${val}"
-done < "${tmp_env}"
-rm -f "${tmp_env}"
+load_dotenv() {
+  local file="$1"
+  local tmp_env
+  tmp_env="$(mktemp)"
+  tr -d '\r' < "${file}" > "${tmp_env}"
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    [[ -z "${line}" || "${line}" =~ ^[[:space:]]*# ]] && continue
+    local key="${line%%=*}"
+    local val="${line#*=}"
+    key="$(echo "${key}" | tr -d '[:space:]')"
+    if [[ "${val}" =~ ^\".*\"$ ]]; then
+      val="${val:1:-1}"
+    elif [[ "${val}" =~ ^\'.*\'$ ]]; then
+      val="${val:1:-1}"
+    fi
+    export "${key}=${val}"
+  done < "${tmp_env}"
+  rm -f "${tmp_env}"
+}
+
+load_dotenv "${APP_DIR}/.env"
 
 : "${POSTGRES_DB:=spoto_ranger}"
 : "${POSTGRES_USER:=spoto}"
@@ -55,7 +59,7 @@ PUBLIC_IP="$(echo "${PUBLIC_IP}" | tr -d '[:space:]')"
 
 echo "==> Public IP detected: ${PUBLIC_IP:-unknown}"
 
-# --- swap (helps t3.micro / 1GB RAM survive Next build) ---
+# --- swap (helps t3.micro / 1GB RAM survive Next builds) ---
 if [[ ! -f /swapfile ]]; then
   echo "==> Creating ${SWAP_MB}MB swap"
   fallocate -l "${SWAP_MB}M" /swapfile || dd if=/dev/zero of=/swapfile bs=1M count="${SWAP_MB}"
@@ -120,32 +124,15 @@ pip install -r requirements.txt
 python manage.py migrate --noinput
 EOF
 
-# --- Frontend (needs NEXT_PUBLIC_* at build time) ---
-echo "==> Frontend install + build"
+# --- Resolve public API URL ---
 if [[ -n "${PUBLIC_IP}" ]]; then
-  # Helpful if .env still has placeholders
   if grep -q 'YOUR_PUBLIC_IP' "${APP_DIR}/.env" 2>/dev/null; then
     sed -i "s/YOUR_PUBLIC_IP/${PUBLIC_IP}/g" "${APP_DIR}/.env"
     echo "Replaced YOUR_PUBLIC_IP in .env with ${PUBLIC_IP}"
   fi
 fi
 
-# Re-load .env after possible sed
-tmp_env="$(mktemp)"
-tr -d '\r' < "${APP_DIR}/.env" > "${tmp_env}"
-while IFS= read -r line || [[ -n "${line}" ]]; do
-  [[ -z "${line}" || "${line}" =~ ^[[:space:]]*# ]] && continue
-  key="${line%%=*}"
-  val="${line#*=}"
-  key="$(echo "${key}" | tr -d '[:space:]')"
-  if [[ "${val}" =~ ^\".*\"$ ]]; then
-    val="${val:1:-1}"
-  elif [[ "${val}" =~ ^\'.*\'$ ]]; then
-    val="${val:1:-1}"
-  fi
-  export "${key}=${val}"
-done < "${tmp_env}"
-rm -f "${tmp_env}"
+load_dotenv "${APP_DIR}/.env"
 
 if [[ -z "${NEXT_PUBLIC_API_BASE_URL:-}" || "${NEXT_PUBLIC_API_BASE_URL}" == *"YOUR_PUBLIC_IP"* ]]; then
   if [[ -n "${PUBLIC_IP}" ]]; then
@@ -160,6 +147,27 @@ if [[ -z "${NEXT_PUBLIC_API_BASE_URL:-}" || "${NEXT_PUBLIC_API_BASE_URL}" == *"Y
   fi
 fi
 
+# Ensure CORS includes site origin (admin shares same origin via /console)
+if [[ -n "${PUBLIC_IP}" ]]; then
+  site_origin="http://${PUBLIC_IP}"
+  current_cors="${CORS_ALLOWED_ORIGINS:-}"
+  if [[ ",${current_cors}," != *",${site_origin},"* ]]; then
+    if [[ -n "${current_cors}" ]]; then
+      new_cors="${current_cors},${site_origin}"
+    else
+      new_cors="${site_origin}"
+    fi
+    if grep -q '^CORS_ALLOWED_ORIGINS=' "${APP_DIR}/.env"; then
+      sed -i "s|^CORS_ALLOWED_ORIGINS=.*|CORS_ALLOWED_ORIGINS=${new_cors}|" "${APP_DIR}/.env"
+    else
+      echo "CORS_ALLOWED_ORIGINS=${new_cors}" >> "${APP_DIR}/.env"
+    fi
+    export CORS_ALLOWED_ORIGINS="${new_cors}"
+  fi
+fi
+
+# --- Ranger frontend ---
+echo "==> Frontend install + build"
 sudo -u "${APP_USER}" bash <<EOF
 set -euo pipefail
 cd "${APP_DIR}/frontend"
@@ -168,55 +176,47 @@ npm ci
 npm run build
 EOF
 
-# --- systemd (1 worker for micro instances) ---
+# --- Admin console (served at /console behind nginx) ---
+echo "==> Admin install + build"
+ADMIN_ENV="${APP_DIR}/admin/.env"
+cat > "${ADMIN_ENV}" <<ADMINENV
+NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+NEXT_PUBLIC_BASE_PATH=/console
+ADMINENV
+chown "${APP_USER}:${APP_USER}" "${ADMIN_ENV}"
+chmod 600 "${ADMIN_ENV}"
+
+sudo -u "${APP_USER}" bash <<EOF
+set -euo pipefail
+cd "${APP_DIR}/admin"
+export NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL}"
+export NEXT_PUBLIC_BASE_PATH=/console
+npm ci
+npm run build
+EOF
+
+# --- systemd (copy from repo, rewrite paths/user) ---
 echo "==> Installing systemd units"
-cat > /etc/systemd/system/spoto-ranger-api.service <<UNIT
-[Unit]
-Description=Spoto Ranger API (FastAPI / Uvicorn)
-After=network.target postgresql.service
-Requires=postgresql.service
+install_unit() {
+  local name="$1"
+  local src="${APP_DIR}/deploy/systemd/${name}.service"
+  local dest="/etc/systemd/system/${name}.service"
+  sed \
+    -e "s|/opt/spotoranger|${APP_DIR}|g" \
+    -e "s|^User=ubuntu$|User=${APP_USER}|" \
+    -e "s|^Group=ubuntu$|Group=${APP_USER}|" \
+    "${src}" > "${dest}"
+}
 
-[Service]
-Type=simple
-User=${APP_USER}
-Group=${APP_USER}
-WorkingDirectory=${APP_DIR}/backend
-EnvironmentFile=${APP_DIR}/.env
-ExecStart=${APP_DIR}/backend/.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000 --workers 1
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-
-cat > /etc/systemd/system/spoto-ranger-web.service <<UNIT
-[Unit]
-Description=Spoto Ranger Web (Next.js)
-After=network.target
-
-[Service]
-Type=simple
-User=${APP_USER}
-Group=${APP_USER}
-WorkingDirectory=${APP_DIR}/frontend
-EnvironmentFile=${APP_DIR}/.env
-Environment=NODE_ENV=production
-Environment=PORT=3000
-Environment=HOSTNAME=127.0.0.1
-ExecStart=/usr/bin/npm run start -- -H 127.0.0.1 -p 3000
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-UNIT
+install_unit spoto-ranger-api
+install_unit spoto-ranger-web
+install_unit spoto-ranger-admin
 
 systemctl daemon-reload
-systemctl enable --now spoto-ranger-api spoto-ranger-web
+systemctl enable --now spoto-ranger-api spoto-ranger-web spoto-ranger-admin
 
 # --- Nginx IP mode ---
-echo "==> Configuring Nginx (single-IP /api proxy)"
+echo "==> Configuring Nginx (/, /console, /api)"
 cp "${APP_DIR}/deploy/nginx/spoto-ranger-ip.conf" /etc/nginx/sites-available/spoto-ranger
 rm -f /etc/nginx/sites-enabled/default
 ln -sfn /etc/nginx/sites-available/spoto-ranger /etc/nginx/sites-enabled/spoto-ranger
@@ -227,8 +227,9 @@ systemctl reload nginx
 echo ""
 echo "============================================"
 echo " Spoto Ranger is up (min-cost single EC2)"
-echo " Website:  http://${PUBLIC_IP:-YOUR_IP}"
+echo " Ranger:   http://${PUBLIC_IP:-YOUR_IP}"
+echo " Admin:    http://${PUBLIC_IP:-YOUR_IP}/console"
 echo " API docs: http://${PUBLIC_IP:-YOUR_IP}/api/docs"
 echo " Health:   http://${PUBLIC_IP:-YOUR_IP}/api/health"
 echo "============================================"
-echo "Check: sudo systemctl status spoto-ranger-api spoto-ranger-web nginx"
+echo "Check: sudo systemctl status spoto-ranger-api spoto-ranger-web spoto-ranger-admin nginx"

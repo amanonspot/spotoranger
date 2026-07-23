@@ -107,10 +107,17 @@ export type UpdateRangerPayload = {
   upiId?: string;
 };
 
-export function requestOtp(phone: string, fullName?: string): Promise<{ message: string }> {
+export function requestOtp(
+  phone: string,
+  options?: { fullName?: string; intent?: "login" | "register" },
+): Promise<{ message: string }> {
   return apiClient("/auth/otp/request", {
     method: "POST",
-    body: JSON.stringify({ phone, fullName: fullName || undefined }),
+    body: JSON.stringify({
+      phone,
+      fullName: options?.fullName || undefined,
+      intent: options?.intent ?? "login",
+    }),
   });
 }
 

@@ -2,21 +2,36 @@
 
 ## Boundary
 
-The platform is split into two independently owned applications:
+The platform is split into three independently owned applications:
 
-- `frontend/` - Next.js PWA. It talks to the platform only through REST APIs.
-- `backend/` - Django domain core and FastAPI REST surface.
+- `frontend/` — Next.js Ranger PWA. Talks to the platform only through REST APIs.
+- `admin/` — Next.js admin console. Same rule: REST only, no direct DB access.
+- `backend/` — Django domain core and FastAPI REST surface.
 
-The frontend never imports backend code and never connects directly to PostgreSQL.
+UIs never import backend code and never connect directly to PostgreSQL.
 
-## Backend Shape
+```mermaid
+flowchart LR
+  Ranger["frontend :3000"] --> API["FastAPI :8000"]
+  Admin["admin :3001"] --> API
+  API --> Django["Django ORM / services"]
+  Django --> PG[(PostgreSQL)]
+```
+
+On a single EC2, Nginx exposes:
+
+- `/` → Ranger
+- `/console` → Admin (`NEXT_PUBLIC_BASE_PATH=/console`)
+- `/api/` → FastAPI
+
+## Backend shape
 
 Django owns:
 
 - Database models and migrations
 - Django Admin
 - Authentication state
-- RBAC
+- RBAC (`ranger`, `admin`, `recruiter`)
 - Wallet ledger
 - Admin/recruiter business operations
 - Audit logs
@@ -27,16 +42,15 @@ FastAPI owns:
 - OpenAPI docs
 - Ranger, recruiter, admin, notification, maps, and future AI endpoints
 
-FastAPI initializes Django and uses the Django ORM through service modules. API routers should stay thin; business rules belong in service modules under `backend/apps/core/services/`.
+FastAPI initializes Django and uses the Django ORM through service modules. API routers stay thin; business rules belong in `backend/apps/core/services/`.
 
-## Frontend Shape
+## Frontend / admin shape
 
-The frontend is feature-oriented and design-system constrained:
+Both Next apps are feature-oriented and design-system constrained:
 
-- `src/design-system` - Spoto tokens and reusable primitives
-- `src/components` - app-shell and shared product components
-- `src/app` - route-level composition
-- `src/lib/api` - REST client
+- `src/design-system` — Spoto tokens and reusable primitives
+- `src/components` — app-shell and shared product components
+- `src/app` — route-level composition
+- `src/lib/api` — REST client
 
 Do not define one-off visual styles in feature code when a design-system primitive exists.
-
